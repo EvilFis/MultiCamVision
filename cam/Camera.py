@@ -39,8 +39,8 @@ class Camera(object):
         self._thread_ready = Event()
         self._thread = Thread(name="Update frame", target=self._update_frame, args=(show_frame,))
 
-    def __del__(self):
-        self.release()
+    # def __del__(self):
+    #     self.release()
 
     def initialize(self):
         self.test_camera()
@@ -224,7 +224,10 @@ def camera_calibrate(boar_size: tuple = (6, 9),
             cv2.imshow('Draw chessboard corners', img)
             cv2.waitKey(0)
 
-    cv2.destroyWindow("Draw chessboard corners")
+    try:
+        cv2.destroyWindow("Draw chessboard corners")
+    except cv2.error:
+        pass
 
     _, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objectPoints=obj_points,
                                                      imagePoints=img_points,
