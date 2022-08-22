@@ -1,5 +1,7 @@
 .idea
 venv
+camera_img
+img
 
 cam/calib.py
 
