@@ -6,4 +6,6 @@ img
 cam/calib.py
 
 .env
-calibrate.py
+#calibrate.py
+
+*.mp4

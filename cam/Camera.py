@@ -86,7 +86,7 @@ class Camera(object):
     def _update_frame(self, show_frame: bool = False):
 
         _, frame_test = self._cap.read()
-        out_file = cv2.VideoWriter(f"Camera {self._camera_id}",
+        out_file = cv2.VideoWriter(f"Camera {self._camera_id}.mp4",
                                    cv2.VideoWriter_fourcc(*"MP4V"),
                                    25.0,
                                    (frame_test.shape[1], frame_test.shape[0]))
