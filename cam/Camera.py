@@ -86,10 +86,11 @@ class Camera(object):
     def _update_frame(self, show_frame: bool = False):
 
         _, frame_test = self._cap.read()
-        out_file = cv2.VideoWriter(f"Camera {self._camera_id}.mp4",
-                                   cv2.VideoWriter_fourcc(*"MP4V"),
-                                   25.0,
-                                   (frame_test.shape[1], frame_test.shape[0]))
+        if self._save_video:
+            out_file = cv2.VideoWriter(f"Camera {self._camera_id}.mp4",
+                                       cv2.VideoWriter_fourcc(*"MP4V"),
+                                       25.0,
+                                       (frame_test.shape[1], frame_test.shape[0]))
 
         while not self._stop:
             ret, frame = self._cap.read()
@@ -235,7 +236,7 @@ def camera_calibrate(boar_size: tuple = (6, 9),
                                                      cameraMatrix=None,
                                                      distCoeffs=None)
 
-    return mtx, dist, rvecs, tvecs
+    return mtx, dist, rvecs, tvecs, obj_points, img_points
 
 
 def create_dataset(camera_list: list,
