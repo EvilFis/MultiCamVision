@@ -1,5 +1,6 @@
 import os
 import shutil
+import pickle
 import glob
 import cv2
 import numpy as np
@@ -11,29 +12,18 @@ matplotlib.use('TkAgg')
 from cam import create_dataset, Camera
 
 
-def create_screen(cam_id, folder='./img'):
-    # Создание директории
-    os.makedirs(f"./{folder}/camera {cam_id}")
+def save_data(path, data):
+    with open(path, 'wb') as handle:
+        pickle.dump(data, handle)
 
-    cap = cv2.VideoCapture(cam_id)
-    counter = 1
-    while cap.isOpened():
-        _, frame = cap.read()
+    print("Saved")
 
-        cv2.imshow(f"Camera: {cam_id}", frame)
 
-        key = cv2.waitKey(1) & 0xFF
+def load_data(path):
+    with open(path, 'rb') as handle:
+        data = pickle.load(handle)
 
-        if key == ord('s'):
-            cv2.imwrite(os.path.join(f"{folder}/camera {cam_id}",
-                                     f"Camera {cam_id}_{counter}.jpg"), frame)
-            counter += 1
-
-        if key == ord('q'):
-            cv2.destroyAllWindows()
-            cap.release()
-
-    print("Close")
+    return data
 
 
 def camera_calibrate(images_folder='./img',
@@ -182,42 +172,62 @@ def DLT(P1, P2, point1, point2):
 
 
 if __name__ == "__main__":
-    # camera1 = Camera(camera_id=0, show_frame=False, vertical_flip=True, save_video=False)
-    # camera2 = Camera(camera_id=1, show_frame=False, vertical_flip=True, save_video=False)
+    camera1 = Camera(camera_id=0, show_frame=False, vertical_flip=True, save_video=False)
+    camera2 = Camera(camera_id=1, show_frame=False, vertical_flip=True, save_video=False)
     #
     # create_screen(0)
     # create_screen(1)
     #
     # camera1.initialize()
     # camera2.initialize()
-    #
+
     # create_dataset([camera1, camera2], './img/split/')
 
-    mtx1, dist1 = camera_calibrate('./img/camera 0/*.jpg')
-    mtx2, dist2 = camera_calibrate('./img/camera 1/*.jpg')
-
-    R, T = stereo_camera_calibrate(images_folder1="./img/split/camera 1/*.jpg",
-                                   images_folder2="./img/split/camera 2/*.jpg",
-                                   cameraMatrix1=mtx1,
-                                   cameraMatrix2=mtx2,
-                                   distCoeffs1=dist1,
-                                   distCoeffs2=dist2)
-
-    # print(f"Camera matrix 0:\n {mtx1}")
-    # print(f"Camera matrix 1:\n {mtx2}")
+    # ========================================== КАЛИБРОВКА КАМЕРЫ =====================================================
+    # mtx1, dist1 = camera_calibrate('./img/split/camera 1/*.jpg', debug=False)
+    # mtx2, dist2 = camera_calibrate('./img/split/camera 2/*.jpg', debug=False)
     #
-    # print(f"Camera dist 0:\n {dist1}")
-    # print(f"Camera dist 1:\n {dist2}")
+    # R, T = stereo_camera_calibrate(images_folder1="./img/split/camera 1/*.jpg",
+    #                                images_folder2="./img/split/camera 2/*.jpg",
+    #                                cameraMatrix1=mtx1,
+    #                                cameraMatrix2=mtx2,
+    #                                distCoeffs1=dist1,
+    #                                distCoeffs2=dist2,
+    #                                debug=False)
+
+    # ==================================== СОХРАНЕНИЕ ДАННЫХ ===========================================================
+    # save_data('./data/matrix_camera_1080.pickle', mtx1)
+    # save_data('./data/matrix_camera.pickle', mtx2)
     #
-    # print(f"R:\n {R}")
-    # print(f"T:\n {T}")
+    # save_data('./data/dist_camera_1080.pickle', dist1)
+    # save_data('./data/dist_camera.pickle', dist2)
+    #
+    # save_data('./data/stereo_R.pickle', R)
+    # save_data('./data/stereo_T.pickle', T)
 
-    board_size = (6, 9)
-    world_scaling = 1.
+    # ============================================== ЗАГРУЗКА ДАННЫХ ===================================================
+    mtx1 = load_data('./data/matrix_camera_1080.pickle')
+    mtx2 = load_data('./data/matrix_camera.pickle')
 
-    # create_screen(0, './img/cam 1/')
-    # create_screen(1, './img/cam 2/')
+    dist1 = load_data('./data/dist_camera_1080.pickle')
+    dist2 = load_data('./data/dist_camera.pickle')
 
+    R = load_data('./data/stereo_R.pickle')
+    T = load_data('./data/stereo_T.pickle')
+
+    print(f"Camera matrix 0:\n {mtx1}")
+    print(f"Camera matrix 1:\n {mtx2}")
+
+    print(f"Camera dist 0:\n {dist1}")
+    print(f"Camera dist 1:\n {dist2}")
+
+    print(f"R:\n {R}")
+    print(f"T:\n {T}")
+
+    # board_size = (6, 9)
+    # world_scaling = 1.
+
+    # =============================================== РУЧНАЯ РАЗМЕТКА ДАННЫХ ===========================================
     # count = 0
     # while True:
     #
@@ -287,121 +297,149 @@ if __name__ == "__main__":
     #
     # plt.show()
 
+    # =============================================== НАХОЖДЕНИЕ АВТО =================================================
+
     import mediapipe as mp
+    from mpl_toolkits.mplot3d import Axes3D
+
+
+    def get_frame_keypoints(landmarks, frame):
+        frame_keypoints = []
+        for face_landmarks in landmarks:
+            for p in range(468):
+                pxl_x = int(round(frame.shape[1] * face_landmarks.landmark[p].x))
+                pxl_y = int(round(frame.shape[0] * face_landmarks.landmark[p].y))
+                kpts = [pxl_x, pxl_y]
+                frame_keypoints.append(kpts)
+
+        return frame_keypoints
+
 
     mp_drawing = mp.solutions.drawing_utils
-    mp_hands = mp.solutions.hands
+    mp_face = mp.solutions.face_mesh
 
-    IMAGE_FILES = ['./img/hand1.jpg', './img/hand2.jpg']
+    face1 = mp_face.FaceMesh(max_num_faces=1,
+                             refine_landmarks=True,
+                             min_detection_confidence=0.5,
+                             min_tracking_confidence=0.5)
+    face2 = mp_face.FaceMesh(max_num_faces=1,
+                             refine_landmarks=True,
+                             min_detection_confidence=0.5,
+                             min_tracking_confidence=0.5)
 
-    hands0 = mp_hands.Hands(min_detection_confidence=0.5, max_num_hands =1, min_tracking_confidence=0.5)
-    hands1 = mp_hands.Hands(min_detection_confidence=0.5, max_num_hands =1, min_tracking_confidence=0.5)
-
-    frame1 = cv2.imread('./img/hand1.jpg')
-    frame2 = cv2.imread('./img/hand2.jpg')
-
-    frame1_copy = cv2.cvtColor(frame1, cv2.COLOR_BGR2RGB)
-    frame2_copy = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
-
-    frame1_copy.flags.writeable = False
-    frame2_copy.flags.writeable = False
-    results1 = hands0.process(frame1_copy)
-    results2 = hands1.process(frame2_copy)
-
-
-    frame0_keypoints = []
-    if results1.multi_hand_landmarks:
-        for hand_landmarks in results1.multi_hand_landmarks:
-            for p in range(21):
-                pxl_x = int(round(frame1_copy.shape[1]*hand_landmarks.landmark[p].x))
-                pxl_y = int(round(frame1_copy.shape[0]*hand_landmarks.landmark[p].y))
-                kpts = [pxl_x, pxl_y]
-                frame0_keypoints.append(kpts)
-
-
-    else:
-        frame0_keypoints = [[-1, -1]]*21
-
-    frame1_keypoints = []
-    if results2.multi_hand_landmarks:
-        for hand_landmarks in results2.multi_hand_landmarks:
-            for p in range(21):
-                #print(p, ':', hand_landmarks.landmark[p].x, hand_landmarks.landmark[p].y)
-                pxl_x = int(round(frame2_copy.shape[1]*hand_landmarks.landmark[p].x))
-                pxl_y = int(round(frame2_copy.shape[0]*hand_landmarks.landmark[p].y))
-                kpts = [pxl_x, pxl_y]
-                frame1_keypoints.append(kpts)
-
-    else:
-        frame1_keypoints = [[-1, -1]]*21
-
-    print("Frame kp 1:\n", frame0_keypoints)
-    print("Frame kp 2:\n", frame1_keypoints)
-
-    for points1, points2 in zip(frame0_keypoints, frame1_keypoints):
-        cv2.circle(frame1, points1, 5, (255,0,0), cv2.FILLED)
-        cv2.circle(frame2, points2, 5, (255,0,0), cv2.FILLED)
-
-    cv2.imshow('IMG', frame1)
-    cv2.waitKey(0)
-
-    cv2.imshow('IMG', frame2)
-    cv2.waitKey(0)
-
-    RT1 = np.concatenate([np.eye(3), [[0], [0], [0]]], axis=-1)
-    P1 = mtx1 @ RT1
-
-    RT2 = np.concatenate([R, T], axis=-1)
-    P2 = mtx2 @ RT2
-
-    from mpl_toolkits.mplot3d import Axes3D
+    camera1.initialize()
+    camera2.initialize()
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    # ax.set_xlim3d(-14, -24)
-    # ax.set_ylim3d(-5, 5)
-    # ax.set_zlim3d(-500, 500)
+    # connections = [[i, i+1] for i in range(467)]
+    counter = 0
+    while True:
 
-    p3ds = []
-    for uv1, uv2 in zip(frame0_keypoints, frame1_keypoints):
-        _p3d = DLT(P1, P2, uv1, uv2)
-        p3ds.append(_p3d)
-    p3ds = np.array(p3ds)
+        frame1 = camera1.read_frame()
+        frame2 = camera2.read_frame()
 
-    connections = [[0, 1], [1, 2], [2, 3], [3, 4],
-                   [0,5], [5,6], [6,7], [7,8],
-                   [5,9], [9,10], [10,11], [11,12],
-                   [9,13], [13,14], [14,15], [15,16],
-                   [13,17], [17,18], [18,19], [19,20], [17, 0]]
+        frame1_copy = cv2.cvtColor(frame1, cv2.COLOR_BGR2RGB)
+        frame2_copy = cv2.cvtColor(frame2, cv2.COLOR_BGR2RGB)
 
-    for _c in connections:
-        # print(p3ds[_c[0]])
-        # print(p3ds[_c[1]])
-        ax.plot(xs=[p3ds[_c[0], 0], p3ds[_c[1], 0]], ys=[p3ds[_c[0], 1], p3ds[_c[1], 1]],
-                zs=[p3ds[_c[0], 2], p3ds[_c[1], 2]], c='red')
-        ax.scatter(xs=[p3ds[_c[0], 0], p3ds[_c[1], 0]], ys=[p3ds[_c[0], 1], p3ds[_c[1], 1]],
-                zs=[p3ds[_c[0], 2], p3ds[_c[1], 2]], c='green')
+        frame1_copy.flags.writeable = False
+        frame2_copy.flags.writeable = False
 
-    def animate(i):
-        print(i/360 * 100, "%")
-        line = ax.view_init(210, i)
-        return line
+        results1 = face1.process(frame1_copy)
+        results2 = face2.process(frame2_copy)
 
-    import matplotlib.animation as animation
+        if results1.multi_face_landmarks:
+            frame1_keypoints = get_frame_keypoints(results1.multi_face_landmarks,
+                                                   frame1)
+        else:
+            frame1_keypoints = [[-1, -1]] * 468
 
-    #  Создаем объект анимации:
-    sin_animation = animation.FuncAnimation(fig,
-                                            animate,
-                                            frames=np.linspace(0, 360, 360),
-                                            interval = 10,
-                                            repeat = False)
+        if results2.multi_face_landmarks:
+            frame2_keypoints = get_frame_keypoints(results2.multi_face_landmarks,
+                                                   frame2)
+        else:
+            frame2_keypoints = [[-1, -1]] * 468
 
-    #  Сохраняем анимацию в виде gif файла:
-    sin_animation.save('моя анимация.gif',
-                       writer='imagemagick',
-                       fps=30)
+        # print("Frame kp 1:\n", frame1_keypoints)
+        # print("Frame kp 2:\n", frame2_keypoints)
+
+        for points1, points2 in zip(frame1_keypoints, frame2_keypoints):
+            cv2.circle(frame1, points1, 1, (255,0,0), cv2.FILLED)
+            cv2.circle(frame2, points2, 1, (255,0,0), cv2.FILLED)
+
+        frames = Camera().stack_images(0.8, [[frame1, frame2]])
+
+        cv2.imshow('Check', frames)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            cv2.destroyAllWindows()
+            camera1.release()
+            camera2.release()
+            break
+
+        # @ - матричное умножение
+        RT1 = np.concatenate([np.eye(3), [[0], [0], [0]]], axis=-1)
+        P1 = mtx1 @ RT1
+
+        RT2 = np.concatenate([R, T], axis=-1)
+        P2 = mtx2 @ RT2
+
+        p3ds = []
+        for uv1, uv2 in zip(frame1_keypoints, frame2_keypoints):
+            _p3d = DLT(P1, P2, uv1, uv2)
+            p3ds.append(_p3d)
+        p3ds = np.array(p3ds)
+
+        ax.scatter(xs=[p3ds[:, 0], p3ds[:, 0]], ys=[p3ds[:, 1], p3ds[:, 1]],
+                   zs=[p3ds[:, 2], p3ds[:, 2]], c='green')
+
+        plt.draw()
+        plt.pause(.001)
+        ax.clear()
+
+
+    # # ax.set_xlim3d(-14, -24)
+    # # ax.set_ylim3d(-5, 5)
+    # # ax.set_zlim3d(-500, 500)
+    #
+
+    #
+    # connections = [[0, 1], [1, 2], [2, 3], [3, 4],
+    #                [0,5], [5,6], [6,7], [7,8],
+    #                [5,9], [9,10], [10,11], [11,12],
+    #                [9,13], [13,14], [14,15], [15,16],
+    #                [13,17], [17,18], [18,19], [19,20], [17, 0]]
+    #
+    # for _c in connections:
+    #     # print(p3ds[_c[0]])
+    #     # print(p3ds[_c[1]])
+    #     ax.plot(xs=[p3ds[_c[0], 0], p3ds[_c[1], 0]], ys=[p3ds[_c[0], 1], p3ds[_c[1], 1]],
+    #             zs=[p3ds[_c[0], 2], p3ds[_c[1], 2]], c='red')
+    #     ax.scatter(xs=[p3ds[_c[0], 0], p3ds[_c[1], 0]], ys=[p3ds[_c[0], 1], p3ds[_c[1], 1]],
+    #             zs=[p3ds[_c[0], 2], p3ds[_c[1], 2]], c='green')
+    #
+    # def animate(i):
+    #     print(i/360 * 100, "%")
+    #     line = ax.view_init(210, i)
+    #     return line
+    #
+    # import matplotlib.animation as animation
+    #
+    # #  Создаем объект анимации:
+    # sin_animation = animation.FuncAnimation(fig,
+    #                                         animate,
+    #                                         frames=np.linspace(0, 360, 360),
+    #                                         interval = 10,
+    #                                         repeat = False)
+    #
+    # #  Сохраняем анимацию в виде gif файла:
+    # sin_animation.save('моя анимация.gif',
+    #                    writer='imagemagick',
+    #                    fps=30)
 
     # for angle in range(0, 360):
     #     ax.view_init(210, angle)
     #     plt.draw()
     #     plt.pause(.001)
+
+#%%

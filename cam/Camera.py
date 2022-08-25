@@ -320,5 +320,3 @@ if __name__ == "__main__":
     camera1 = Camera(camera_id=0, show_frame=False, vertical_flip=True, save_video=False)
 
     camera1.initialize()
-
-    create_dataset([camera1])
