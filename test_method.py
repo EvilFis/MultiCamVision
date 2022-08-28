@@ -206,11 +206,11 @@ if __name__ == "__main__":
     # save_data('./data/stereo_T.pickle', T)
 
     # ============================================== ЗАГРУЗКА ДАННЫХ ===================================================
-    mtx1 = load_data('./data/matrix_camera_1080.pickle')
-    mtx2 = load_data('./data/matrix_camera.pickle')
+    mtx2 = load_data('./data/matrix_camera_1080.pickle')
+    mtx1 = load_data('./data/matrix_camera.pickle')
 
-    dist1 = load_data('./data/dist_camera_1080.pickle')
-    dist2 = load_data('./data/dist_camera.pickle')
+    dist2 = load_data('./data/dist_camera_1080.pickle')
+    dist1 = load_data('./data/dist_camera.pickle')
 
     R = load_data('./data/stereo_R.pickle')
     T = load_data('./data/stereo_T.pickle')
@@ -305,8 +305,9 @@ if __name__ == "__main__":
 
     def get_frame_keypoints(landmarks, frame):
         frame_keypoints = []
+        print(landmarks)
         for face_landmarks in landmarks:
-            for p in range(468):
+            for p in range(21):
                 pxl_x = int(round(frame.shape[1] * face_landmarks.landmark[p].x))
                 pxl_y = int(round(frame.shape[0] * face_landmarks.landmark[p].y))
                 kpts = [pxl_x, pxl_y]
@@ -316,16 +317,26 @@ if __name__ == "__main__":
 
 
     mp_drawing = mp.solutions.drawing_utils
-    mp_face = mp.solutions.face_mesh
+    # mp_face = mp.solutions.face_mesh
+    mp_face = mp.solutions.hands
 
-    face1 = mp_face.FaceMesh(max_num_faces=1,
-                             refine_landmarks=True,
-                             min_detection_confidence=0.5,
-                             min_tracking_confidence=0.5)
-    face2 = mp_face.FaceMesh(max_num_faces=1,
-                             refine_landmarks=True,
-                             min_detection_confidence=0.5,
-                             min_tracking_confidence=0.5)
+    # face1 = mp_face.FaceMesh(max_num_faces=1,
+    #                          refine_landmarks=True,
+    #                          min_detection_confidence=0.5,
+    #                          min_tracking_confidence=0.5)
+    # face2 = mp_face.FaceMesh(max_num_faces=1,
+    #                          refine_landmarks=True,
+    #                          min_detection_confidence=0.5,
+    #                          min_tracking_confidence=0.5)
+
+    face1 = mp_face.Hands(max_num_hands=1,
+                          model_complexity=0,
+                          min_detection_confidence=0.5,
+                          min_tracking_confidence=0.5)
+    face2 = mp_face.Hands(max_num_hands=1,
+                          model_complexity=0,
+                          min_detection_confidence=0.5,
+                          min_tracking_confidence=0.5)
 
     camera1.initialize()
     camera2.initialize()
@@ -333,7 +344,16 @@ if __name__ == "__main__":
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     # connections = [[i, i+1] for i in range(467)]
+    ax.view_init(-90, -90)
+
+    mp_pose = mp.solutions.pose
+
+    connections = mp_face.HAND_CONNECTIONS
+
     counter = 0
+    global_kps1 = []
+    global_kps2 = []
+
     while True:
 
         frame1 = camera1.read_frame()
@@ -348,24 +368,29 @@ if __name__ == "__main__":
         results1 = face1.process(frame1_copy)
         results2 = face2.process(frame2_copy)
 
-        if results1.multi_face_landmarks:
-            frame1_keypoints = get_frame_keypoints(results1.multi_face_landmarks,
+        # if results1.multi_face_landmarks:
+        if results1.multi_hand_landmarks:
+            frame1_keypoints = get_frame_keypoints(results1.multi_hand_landmarks,
                                                    frame1)
         else:
-            frame1_keypoints = [[-1, -1]] * 468
+            # frame1_keypoints = [[-1, -1]] * 468
+            frame1_keypoints = [[-1, -1]] * 21
 
-        if results2.multi_face_landmarks:
-            frame2_keypoints = get_frame_keypoints(results2.multi_face_landmarks,
+        if results2.multi_hand_landmarks:
+            frame2_keypoints = get_frame_keypoints(results2.multi_hand_landmarks,
                                                    frame2)
         else:
-            frame2_keypoints = [[-1, -1]] * 468
+            frame2_keypoints = [[-1, -1]] * 21
+
+        global_kps1.append(frame1_keypoints)
+        global_kps2.append(frame2_keypoints)
 
         # print("Frame kp 1:\n", frame1_keypoints)
         # print("Frame kp 2:\n", frame2_keypoints)
 
         for points1, points2 in zip(frame1_keypoints, frame2_keypoints):
-            cv2.circle(frame1, points1, 1, (255,0,0), cv2.FILLED)
-            cv2.circle(frame2, points2, 1, (255,0,0), cv2.FILLED)
+            cv2.circle(frame1, points1, 1, (255, 0, 0), cv2.FILLED)
+            cv2.circle(frame2, points2, 1, (255, 0, 0), cv2.FILLED)
 
         frames = Camera().stack_images(0.8, [[frame1, frame2]])
 
@@ -375,6 +400,8 @@ if __name__ == "__main__":
             cv2.destroyAllWindows()
             camera1.release()
             camera2.release()
+            save_data('data/glob1_kps.pickle', global_kps1)
+            save_data('data/glob2_kps.pickle', global_kps2)
             break
 
         # @ - матричное умножение
@@ -390,13 +417,27 @@ if __name__ == "__main__":
             p3ds.append(_p3d)
         p3ds = np.array(p3ds)
 
-        ax.scatter(xs=[p3ds[:, 0], p3ds[:, 0]], ys=[p3ds[:, 1], p3ds[:, 1]],
-                   zs=[p3ds[:, 2], p3ds[:, 2]], c='green')
+        for _c in connections:
+            ax.plot(xs=[p3ds[_c[0], 0], p3ds[_c[1], 0]],
+                    ys=[p3ds[_c[0], 1], p3ds[_c[1], 1]],
+                    zs=[p3ds[_c[0], 2], p3ds[_c[1], 2]],
+                    c='red')
+            ax.scatter(xs=[p3ds[:, 0], p3ds[:, 0]],
+                       ys=[p3ds[:, 1], p3ds[:, 1]],
+                       zs=[p3ds[:, 2], p3ds[:, 2]],
+                       c='green')
+
+        # ax.set_axis_off()
+        # ax.set_xticks([])
+        # ax.set_yticks([])
+        # ax.set_zticks([])
 
         plt.draw()
         plt.pause(.001)
         ax.clear()
 
+    # save_data('./data/glob1_kps.pickle', global_kps1)
+    # save_data('./data/glob2_kps.pickle', global_kps2)
 
     # # ax.set_xlim3d(-14, -24)
     # # ax.set_ylim3d(-5, 5)
@@ -442,4 +483,4 @@ if __name__ == "__main__":
     #     plt.draw()
     #     plt.pause(.001)
 
-#%%
+# %%
